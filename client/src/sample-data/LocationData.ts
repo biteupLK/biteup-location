@@ -1,13 +1,13 @@
 export const DeliveryData = [
     {
-        lat: 6.9270786,
-        lng: 79.861243
+        lat: 7.352252999999999,
+        lng: 80.6199984
     }
 ];
 
 export const RestaurantData = [
     {
-        lat: 7.2905715,
-        lng: 80.6337262
+        lat: 7.352252999999999,
+        lng: 80.629549
     }
 ];
