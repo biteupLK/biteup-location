@@ -29,6 +29,7 @@ app.use((req, res, next) => {
 });
 
 const users = new Map();
+const orderAssignments = new Map();
 
 // API Routes
 app.get("/api/distance", async (req, res) => {
@@ -36,7 +37,7 @@ app.get("/api/distance", async (req, res) => {
 
   try {
     const response = await axios.get(
-      "https://maps.googleapis.com/maps/api/distancematrix/json",
+      "https://maps.googleapis.com/maps/api/distancematrix/json",    //matrux api called
       {
         params: {
           origins: origin,
@@ -54,7 +55,7 @@ app.get("/api/distance", async (req, res) => {
   }
 });
 
-app.get("/api/nearest-delivery", async (req, res) => {
+app.get("/api/nearest-delivery", async (req, res) => {             //called nearest driver
   const { restaurantLat, restaurantLng } = req.query;
 
   console.log("📦 Finding nearest delivery for:", restaurantLat, restaurantLng);
@@ -66,7 +67,7 @@ app.get("/api/nearest-delivery", async (req, res) => {
   try {
     const origin = `${restaurantLat},${restaurantLng}`;
     const destinationsList = Array.from(users.values());
-    
+
     if (destinationsList.length === 0) {
       return res.status(404).json({ error: "No delivery persons available" });
     }
@@ -76,7 +77,7 @@ app.get("/api/nearest-delivery", async (req, res) => {
       .join("|");
 
     const response = await axios.get(
-      "https://maps.googleapis.com/maps/api/distancematrix/json",
+      "https://maps.googleapis.com/maps/api/distancematrix/json",         //get using matrix api
       {
         params: {
           origins: origin,
@@ -93,7 +94,7 @@ app.get("/api/nearest-delivery", async (req, res) => {
     let nearestSocketId = null;
 
     distances.forEach((element, index) => {
-      if (element.status === "OK" && element.distance.value < minDistance) {
+      if (element.status === "OK" && element.distance.value < minDistance) {            //logic for distance cal
         minDistance = element.distance.value;
         nearestSocketId = Array.from(users.keys())[index];
       }
@@ -115,7 +116,11 @@ io.on("connection", (socket) => {
   console.log("✅ New client connected:", socket.id);
 
   socket.on("send-location", (location) => {
-    if (location && typeof location.lat === "number" && typeof location.lng === "number") {
+    if (
+      location &&
+      typeof location.lat === "number" &&
+      typeof location.lng === "number"
+    ) {
       users.set(socket.id, location);
       console.log(`📍 Updated location for ${socket.id}:`, location);
       io.emit("user-locations", Array.from(users.entries()));
@@ -125,20 +130,54 @@ io.on("connection", (socket) => {
   socket.on("assign-order", ({ socketId, order }) => {
     if (users.has(socketId)) {
       io.to(socketId).emit("new-order", order);
-      console.log(`📦 Order assigned to ${socketId}`);
+      orderAssignments.set(order.id, socketId); // Track the order
+      console.log(`📦 Order ${order.id} assigned to ${socketId}`);
     } else {
-      console.log(`❌ Cannot assign order - delivery person ${socketId} not found`);
+      console.log(
+        `❌ Cannot assign order - delivery person ${socketId} not found`
+      );
     }
   });
 
   socket.on("disconnect", () => {
     console.log("❌ Client disconnected:", socket.id);
+
+    // Remove from active users
     users.delete(socket.id);
+
+    // Remove any order assigned to this socket
+    for (const [orderId, assignedSocketId] of orderAssignments.entries()) {
+      if (assignedSocketId === socket.id) {
+        orderAssignments.delete(orderId);
+        console.log(
+          `🗑️ Removed assignment for order ${orderId} due to disconnect`
+        );
+      }
+    }
+
     io.emit("user-locations", Array.from(users.entries()));
   });
 });
 
-// Health check endpoint
+app.get("/api/order-location", (req, res) => {
+  const { orderId } = req.query;
+
+  const socketId = orderAssignments.get(orderId);
+  if (!socketId) {
+    return res.status(404).json({ error: "Order not assigned yet" });
+  }
+
+  const location = users.get(socketId);
+  if (!location) {
+    return res
+      .status(404)
+      .json({ error: "Delivery person location not available" });
+  }
+
+  res.json({ socketId, location });
+});
+
+// socket Health check endpoint
 app.get("/api/health", (req, res) => {
   res.json({
     status: "OK",
