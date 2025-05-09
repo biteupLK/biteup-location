@@ -1,0 +1,17 @@
+﻿version: "3.8"
+
+services:
+  food-delivery-api:
+    build: .
+    container_name: food-delivery-server
+    ports:
+      - "3001:3001"
+    restart: always
+    environment:
+      - NODE_ENV=production
+    networks:
+      - delivery-network
+
+networks:
+  delivery-network:
+    driver: bridge
